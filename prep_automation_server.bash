@@ -136,6 +136,6 @@ echo "127.0.0.1" >> $HOME/$VAR_MY_REPODIR/inventories/local/inventory
 sleep 1
 
 echo -e "\nensuring ansible playbook for configuration is present...\n"
-#git clone git@$GITSERVER:$GITNAMESPACE/ensure_control_host.git $HOME/$VAR_MY_REPODIR"
+git clone https://$GITSERVER/$GITNAMESPACE/ensure_control_host.git $HOME/$VAR_MY_REPODIR"
 
 exit 0
