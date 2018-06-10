@@ -5,13 +5,14 @@ VAR_MY_EMAIL="$(whoami)@$(hostname -d)"
 VAR_MY_ACCOUNT="$(whoami)"
 VAR_MY_REPODIR="repos"
 VAR_GITNAMESPACE="ryanamorrison"
-VAR_GITSERVER="github.com"
+VAR_GITSERVER="https://github.com"
+VAR_NEXTPROJECT="ensure_control_platform"
 
 show_help(){
 
 cat<<-ENDOFMESSAGE
 
-prep_automation_server.bash 1.0
+prep_automation_server.bash 1.1
 Usage: ./prep_automation_server.bash [Overrides]
 
 Overrides:
@@ -39,6 +40,9 @@ Overrides:
   -s			gitlab.com, github.com, etc.). The default should be fine.
   --gitserver		
   -g		
+
+  -type			The type of source git server (github or gitlab)
+  -t
 ENDOFMESSAGE
 
 }
@@ -62,6 +66,16 @@ case $key in
     ;;
     -s|--server|-g|--gitserver)
     VAR_GITSERVER="$2"
+    shift # past argument
+    shift # past value
+    ;;
+    -t|--type)
+    VAR_TYPE_RAW="$2"
+    if [ "$VAR_TYPE_RAW" == "gitlab" ]; then
+      VAR_GIT_TYPE="gitlab"
+    else
+      VAR_GIT_TYPE="github"
+    fi
     shift # past argument
     shift # past value
     ;;
@@ -90,10 +104,10 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 
 if [ -f /etc/redhat-release ]; then
   echo -e "ensuring ansible, git, libselinux-python and epel are present..."
-  sudo yum -y install epel-release libselinux-python ansible git
+  sudo yum -y install epel-release libselinux-python ansible git unzip
 elif [ -f /etc/lsb-release ]; then
   echo -e "ensuring ansible git are present..."
-  sudo apt-get -y install ansible git
+  sudo apt-get -y install ansible git unzip
 fi
 
 echo -e "\nensuring git config for current user...\n"
@@ -111,9 +125,10 @@ sleep 1
 
 echo -e "\nensuring a sudoers file for the user that is passwordless (for the localhost)...\n"
 if [ ! -f "/etc/sudoers.d/$VAR_MY_ACCOUNT" ]; then
-  echo "%$VAR_MY_ACCOUNT	ALL = (ALL) NOPASSWD: ALL" > $VAR_MY_ACCOUNT
-  sudo chown root:root $VAR_MY_ACCOUNT 
-  sudo mv $VAR_MY_ACCOUNT /etc/sudoers.d/$VAR_MY_ACCOUNT 
+  echo "%$VAR_MY_ACCOUNT        ALL = (ALL) NOPASSWD: ALL" > $VAR_MY_ACCOUNT
+  sudo mv $VAR_MY_ACCOUNT /etc/sudoers.d/$VAR_MY_ACCOUNT
+  sudo chown root:root /etc/sudoers.d/$VAR_MY_ACCOUNT
+  sudo chmod 440 /etc/sudoers.d/$VAR_MY_ACCOUNT
   echo -e "\nsudoers file created."
 fi
 sleep 1
@@ -130,12 +145,25 @@ mkdir -p $HOME/$VAR_MY_REPODIR/inventories/local/group_vars/all
 echo "var_repo_dir: $VAR_MY_REPODIR" > $HOME/$VAR_MY_REPODIR/inventories/local/group_vars/all/all.yml
 echo "var_git_source_server: $VAR_GITSERVER" >> $HOME/$VAR_MY_REPODIR/inventories/local/group_vars/all/all.yml
 echo "var_git_source_namespace: $VAR_GITNAMESPACE" >> $HOME/$VAR_MY_REPODIR/inventories/local/group_vars/all/all.yml
+echo "var_git_source_type: $VAR_GIT_TYPE" >> $HOME/$VAR_MY_REPODIR/inventories/local/group_vars/all/all.yml 
 echo "var_local_profile_source: $VAR_LOCAL_PROFILE_SRC" >> $HOME/$VAR_MY_REPODIR/inventories/local/group_vars/all/all.yml
 echo "[local_server]" > $HOME/$VAR_MY_REPODIR/inventories/local/inventory
-echo "127.0.0.1" >> $HOME/$VAR_MY_REPODIR/inventories/local/inventory
+echo "localhost" >> $HOME/$VAR_MY_REPODIR/inventories/local/inventory
+echo "var_initial_script: $(echo "${BASH_SOURCE[0]}" | awk -F'/' '{ print $NF }')" >> $HOME/$VAR_MY_REPODIR/inventories/local/group_vars/all/all.yml
+echo "var_initial_script_dir: $( cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" >> $HOME/$VAR_MY_REPODIR/inventories/local/group_vars/all/all.yml
+
 sleep 1
 
 echo -e "\nensuring ansible playbook for configuration is present...\n"
-git clone https://$GITSERVER/$GITNAMESPACE/ensure_control_host.git $HOME/$VAR_MY_REPODIR"
+if [ $VAR_GITSERVER == "https://github.com" ]; then
+curl $VAR_GITSERVER/$VAR_GITNAMESPACE/$VAR_NEXTPROJECT/archive/master.zip -o $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT.zip && unzip $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT.zip -d $HOME/$VAR_MY_REPODIR/
+mv $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT-master* $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT
+rm $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT.zip
+else
+# assumes an on-prem gitlab
+curl $VAR_GITSERVER/$VAR_GITNAMESPACE/$VAR_NEXTPROJECT/repository/archive.tar.gz?ref=master -o $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT.tar.gz && tar -xvzf $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT.tar.gz -C $HOME/$VAR_MY_REPODIR/
+mv $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT-master* $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT
+rm $HOME/$VAR_MY_REPODIR/$VAR_NEXTPROJECT.tar.gz
+fi
 
 exit 0
